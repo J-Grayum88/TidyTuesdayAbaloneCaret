@@ -1,0 +1,95 @@
+---
+title: "TIdyModelsCaret"
+author: "Jeff Grayum"
+date: "9/2/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+#install.packages("caret")
+library(caret)
+library(recipes)
+```
+
+```{r}
+df <- read_csv("abalone.data", col_names = FALSE)
+view(df)
+
+columns <- c("Sex", "Length", "Diameter", "Height", "Whole_Weight", "Shucked_Weight", "Viscera_Weight", "Shell_Weight", "Rings")
+
+colnames(df) <- columns
+
+view(df)
+
+df$Sex <- as.factor(df$Sex)
+
+set.seed(80)
+
+df <- sample_n(df, size = 800)
+
+df %>%
+  summary()
+```
+
+First, create training and test sets for your predictive model.
+
+Starting with splitting, training, and test sets with caret:
+```{r}
+caret_split <- createDataPartition(df$Rings, p = .8, list = FALSE)
+view(caret_split)
+
+caret_train <- df[caret_split, ]
+caret_test <- df[-caret_split, ]
+
+caret_test %>%
+  dim()
+```
+
+Now with TidyModels, using intitial split:
+```{r}
+tidy_split <- initial_split(df, prop = 0.8)
+tidy_train <- training(tidy_split)
+tidy_test <- testing(tidy_split)
+dim(tidy_test)
+```
+
+
+Now we must apply some pre-processing. 
+
+First, with caret.  Apply centering and scaling to all values besides target value, "Rings".
+Create Dummy variables for "Sex" (0 or 1).  Center and scale, with one hot encode.  We will apply pre-processing using our training data on both uur training and test sets.
+```{r}
+caret_preProcess <- preProcess(caret_train %>%
+  select(-Rings), 
+  method = c("center", "scale"))
+
+caret_train <- predict(caret_preProcess, caret_train)
+caret_test <- predict(caret_preProcess, caret_test)
+
+#Now we will apply one hot-encoding using caret.
+
+caret_one_hot <- dummyVars(~., data = caret_train)
+
+caret_train <- predict(caret_one_hot, caret_train)
+caret_test <- predict(caret_one_hot, caret_test)
+```
+
+Now, pre-processing the TidyModels way, using recipes.
+```{r}
+tidy_rec <- recipe(Rings~., data = tidy_train) %>%
+  step_center(all_predictors() - all_nominal()) %>% 
+  step_scale(all_predictors() - all_nominal()) %>%
+  step_dummy(all_nominal(), caret_one_hot = TRUE)
+
+tidy_prep <- prep(tidy_rec)
+tidy_prep
+
+```
